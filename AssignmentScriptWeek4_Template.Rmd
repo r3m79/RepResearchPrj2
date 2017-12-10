@@ -1,0 +1,179 @@
+---
+title: "Metheorogical Events across US and its effects"
+author: "R3M79"
+date: "08/12/2017"
+output:
+  html_document: default
+---
+
+# Synopsis
+
+The purpose of this analysis to answer the following questions:
+
+1. Across the United States, which types of events are most harmful with respect to population health?
+
+2. Across the United States, which types of events have the greatest economic consequences?
+
+The analysis was performed by using the data provided by the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database.
+For our analysis we limited the results to the top 10 most relevant for each question.
+
+## Data Processing
+
+The data used on this analysis was downloaded from the following link: https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2
+
+
+```{r setup, include=FALSE }
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+```
+
+### Loading and preprocessing the data
+```{r load,message=FALSE, warning=FALSE}
+#load libraries
+library(dplyr)
+library(ggplot2)
+
+#check if file exists
+dataFile<-dir(pattern="*.bz2")
+if (!file.exists(dataFile)) { 
+    stop("Dataset file not present!") 
+}
+
+#load storm data
+stormSet<-read.csv(dataFile)
+```
+
+Prepare and process Data for Question 1.
+
+- Results will be limited to top 10 most harmfull events
+- Two temporary datasets will be created (one for fatalities and other for injuries) with the following columns:
+    - EventType: Type of Weather Event
+    - Count: Total of fatalities/injuries
+    - EffectType: indicates if values refer Fatalities or Injuries
+    
+- A dataset will be created as the merge from the temporary datasets
+
+```{r processdata_q1,message=FALSE, warning=FALSE}
+
+# Prepare data to answer question 1:
+# Results will be limited to top 10 most harmfull events
+
+#create dataset with only one column for fatalities and injuries count
+
+#dataset for fatalities only
+stormSetFatalities<-stormSet[stormSet$FATALITIES>0,c("STATE","EVTYPE","FATALITIES")]
+stormSetFatalities$EFFTYPE<-"Fatalities"
+names(stormSetFatalities)<-c("State","EventType","Count","EffectType")
+stormSetFatalitiesFinal <- stormSetFatalities %>%
+    group_by(EventType,EffectType) %>%
+    summarize(Count = sum(Count)) %>%
+    as.data.frame() 
+
+#sort data by count and store top 10
+stormSetFatalitiesFinal<- head(stormSetFatalitiesFinal[order(as.numeric(-stormSetFatalitiesFinal[,"Count"])),],10)
+
+#dataset for injuries only
+stormSetInjuries<-stormSet[stormSet$INJURIES>0,c("STATE","EVTYPE","INJURIES")]
+stormSetInjuries$EFFTYPE<-"Injuries"
+names(stormSetInjuries)<-c("State","EventType","Count","EffectType")
+stormSetInjuriesFinal <- stormSetInjuries %>%
+    group_by(EventType,EffectType) %>%
+    summarize(Count = sum(Count)) %>%
+    as.data.frame() 
+
+#sort data by count and store top 10
+stormSetInjuriesFinal<- head(stormSetInjuriesFinal[order(as.numeric(-stormSetInjuriesFinal[,"Count"])),],10)
+
+
+#merge both objects
+stormSetHealthEffects<-rbind(stormSetFatalitiesFinal,stormSetInjuriesFinal)
+
+#clear temporary objects
+rm(stormSetFatalities,stormSetInjuries,stormSetFatalitiesFinal,stormSetInjuriesFinal)
+
+```
+
+Prepare and process Data for Question 2.
+
+- Results will be limited to top 10 weather events with economic consequences
+- Two temporary datasets will be created (one for property damage and other for crop damage) with the following columns:
+    - EventType: Type of Weather Event
+    - TotalDamage: Total of fatalities/injuries
+    - DamageType: indicates if values refer Property or Crop Damages
+    
+- A dataset will be created as the merge from the temporary datasets
+
+A function must be created to convert symbols (B,M,K,H) from columns PROPDMGEXP and CROPDMGEXP to the corresponding exponent value
+```{r convert,message=FALSE, warning=FALSE}
+#convert exponent multipliers
+convUnit<-function(x){
+    expUnit <- 0 # default value
+    expUnit <- ifelse(toupper(x) == "B",9,expUnit)
+    expUnit <- ifelse(toupper(x) == "M",6,expUnit)
+    expUnit <- ifelse(toupper(x) == "K",3,expUnit)
+    expUnit <- ifelse(toupper(x) == "H",2,expUnit)
+    
+    return(as.numeric(expUnit))
+}
+```
+```{r processdata_q2,message=FALSE, warning=FALSE}
+#dataset for property damage
+stormSetDamageProp<-stormSet[,c("EVTYPE","PROPDMG","PROPDMGEXP")] %>%
+    mutate(TOTALPROPDMG = PROPDMG * (10^convUnit(PROPDMGEXP))) %>%
+    group_by(EVTYPE) %>%
+    summarize(Count = sum(TOTALPROPDMG)) %>%
+    as.data.frame() 
+
+names(stormSetDamageProp)<-c("EventType","TotalDamage")
+stormSetDamageProp$DamageType <- "Property Damages"
+
+#sort data by count and store top 10
+stormSetDamageProp<- head(stormSetDamageProp[order(as.numeric(-stormSetDamageProp[,"TotalDamage"])),],10)
+    
+
+stormSetDamageCrop<-stormSet[,c("EVTYPE","CROPDMG","CROPDMGEXP")] %>%
+    mutate(TOTALCROPDMG = CROPDMG * (10^convUnit(CROPDMGEXP))) %>%
+    group_by(EVTYPE) %>%
+    summarize(Count = sum(TOTALCROPDMG)) %>%
+    as.data.frame() 
+
+names(stormSetDamageCrop)<-c("EventType", "TotalDamage")
+stormSetDamageCrop$DamageType <- "Crop Damages"
+
+#sort data by count and store top 10
+stormSetDamageCrop<- head(stormSetDamageCrop[order(as.numeric(-stormSetDamageCrop[,"TotalDamage"])),],10)
+
+
+#merge both objects
+stormSetDamageFinal<-rbind(stormSetDamageProp,stormSetDamageCrop)
+
+#clear temporary objects
+rm(stormSetDamageProp,stormSetDamageCrop)
+```
+
+## Results
+
+Using the datasets created in the Data Processing Section, the results will be presented in this section
+
+### Results for question 1
+Plot will be generated using dataset stormSetHealthEffects
+```{r results_q1,message=FALSE, warning=FALSE}
+stormHealthEffectsPlot <-ggplot(stormSetHealthEffects, aes(EventType,Count,
+                                                           fill=EffectType)) 
+stormHealthEffectsPlot + labs(x="Event Type",y ="Total", 
+                              title ="Top 10 Harmfull Weather Events accross US") + 
+    geom_bar(stat="identity", position="dodge") + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    facet_wrap(~EffectType,scales = "free")
+```
+
+### Results for question 2
+Plot will be generated using dataset stormSetDamageFinal
+```{r results_q2,message=FALSE, warning=FALSE}
+stormSetDamagePlot <-ggplot(stormSetDamageFinal, aes(EventType,TotalDamage,
+                                                           fill=DamageType)) 
+stormSetDamagePlot + labs(x="Event Type",y ="Amount (in Dollars)", 
+                              title ="Top 10 Greatest Economic Impact Weather Events accross US") + 
+    geom_bar(stat="identity", position="dodge") + 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    facet_wrap(~DamageType,scales = "free")
+```
